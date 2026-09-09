@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Apni Workshop & Live Bay Tracker</title>
+    <meta name="description" content="Indian automotive service booking and live bay tracker with real-time job timeline, AI diagnostic estimates, search-grounded parts pricing, and mechanic-customer approval workflow." />
+    <meta property="og:title" content="Apni Workshop & Live Bay Tracker" />
+    <meta property="og:description" content="Indian automotive service booking and live bay tracker with real-time job timeline, AI diagnostic estimates, search-grounded parts pricing, and mechanic-customer approval workflow." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    
+    <!-- Mobile Web App & PWA Standalone Support -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Apni Workshop" />
+    <meta name="theme-color" content="#0d631b" />
+    
+    <!-- Google Fonts: Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet" />
+    
+    <!-- Material Symbols Outlined -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+
+    <!-- Razorpay Standard Web Checkout Script -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <!-- Google Platform & Maps Error Guard -->
+    <script>
+      (function() {
+        var origError = console.error;
+        console.error = function() {
+          var msg = "";
+          for (var i = 0; i < arguments.length; i++) {
+            try {
+              msg += " " + (typeof arguments[i] === "object" ? JSON.stringify(arguments[i]) : String(arguments[i]));
+            } catch (_) {}
+          }
+          if (
+            msg.indexOf("RefererNotAllowedMapError") !== -1 ||
+            msg.indexOf("Google Maps JavaScript API error") !== -1 ||
+            msg.indexOf("gm_authFailure") !== -1 ||
+            msg.indexOf("google.rpc.ErrorInfo") !== -1 ||
+            msg.indexOf("API_KEY_HTTP_REFERRER_BLOCKED") !== -1
+          ) {
+            return;
+          }
+          origError.apply(console, arguments);
+        };
+        window.addEventListener("error", function(e) {
+          var eMsg = (e && e.message) ? String(e.message) : "";
+          if (
+            eMsg.indexOf("RefererNotAllowedMapError") !== -1 ||
+            eMsg.indexOf("Google Maps JavaScript API error") !== -1 ||
+            eMsg.indexOf("gm_authFailure") !== -1 ||
+            eMsg.indexOf("google.rpc.ErrorInfo") !== -1 ||
+            eMsg.indexOf("API_KEY_HTTP_REFERRER_BLOCKED") !== -1
+          ) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body class="bg-[#fbf9f1] text-[#1b1c17] min-h-full font-sans antialiased selection:bg-[#91f78e] selection:text-[#002204]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

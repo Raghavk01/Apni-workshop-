@@ -1,0 +1,7 @@
+{
+  "name": "Apni Workshop & Live Bay Tracker",
+  "description": "Indian automotive service booking and live bay tracker with real-time job timeline, AI diagnostic estimates, search-grounded parts pricing, and mechanic-customer approval workflow.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

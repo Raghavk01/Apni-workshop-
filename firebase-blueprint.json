@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role and phone details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "role": { "type": "string", "enum": ["customer", "workshop_owner", "driver", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Customer registered vehicle",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "plate": { "type": "string", "maxLength": 20 },
+        "make": { "type": "string", "maxLength": 50 },
+        "model": { "type": "string", "maxLength": 50 },
+        "fuelType": { "type": "string", "enum": ["Petrol", "Diesel", "CNG", "EV"] },
+        "currentWorkshopId": { "type": "string", "maxLength": 128 },
+        "lastServiceDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "plate", "model"]
+    },
+    "Workshop": {
+      "title": "Workshop",
+      "description": "Workshop partner profile",
+      "type": "object",
+      "properties": {
+        "workshopId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "rating": { "type": "number" },
+        "locationArea": { "type": "string", "maxLength": 100 },
+        "isOnline": { "type": "boolean" },
+        "role": { "type": "string", "enum": ["workshop_owner"] }
+      },
+      "required": ["workshopId", "name", "role"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Vehicle service booking document",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string", "maxLength": 50 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "workshopId": { "type": "string", "maxLength": 128 },
+        "vehiclePlate": { "type": "string", "maxLength": 20 },
+        "vehicleName": { "type": "string", "maxLength": 100 },
+        "packageId": { "type": "string", "maxLength": 50 },
+        "packageName": { "type": "string", "maxLength": 100 },
+        "packagePrice": { "type": "number" },
+        "serviceMode": { "type": "string", "enum": ["doorstep", "dropoff"] },
+        "scheduledDate": { "type": "string", "maxLength": 50 },
+        "scheduledSlot": { "type": "string", "maxLength": 50 },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING_WORKSHOP_ACCEPTANCE",
+            "BOOKING_CONFIRMED",
+            "VALET_DISPATCHED",
+            "CAR_PICKED_UP",
+            "BAY_INGESTED",
+            "UNDER_INSPECTION",
+            "AWAITING_CUSTOMER_APPROVAL",
+            "REPAIR_IN_PROGRESS",
+            "QC_PASSED",
+            "READY_FOR_DELIVERY",
+            "COMPLETED",
+            "REJECTED"
+          ]
+        },
+        "acceptBy": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["pending", "paid", "refunded"] },
+        "paymentMethod": { "type": "string", "maxLength": 50 },
+        "totalAmount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookingId", "userId", "workshopId", "status", "totalAmount"]
+    },
+    "BookingTimelineEvent": {
+      "title": "BookingTimelineEvent",
+      "description": "Immutable audit event in booking lifecycle",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 300 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["status", "title", "timestamp"]
+    },
+    "WorkApproval": {
+      "title": "WorkApproval",
+      "description": "Mechanic recommendation requiring vehicle owner approval",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string", "maxLength": 50 },
+        "componentName": { "type": "string", "maxLength": 100 },
+        "partsInfo": { "type": "string", "maxLength": 200 },
+        "recommendedBy": { "type": "string", "maxLength": 100 },
+        "price": { "type": "number" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookingId", "componentName", "price", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile collection"
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": { "$ref": "#/entities/Vehicle" },
+      "description": "Customer registered vehicles with workshop access gating"
+    },
+    "/workshops/{workshopId}": {
+      "schema": { "$ref": "#/entities/Workshop" },
+      "description": "Public workshop discovery and operational status"
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Service bookings state machine"
+    },
+    "/bookings/{bookingId}/timeline/{eventId}": {
+      "schema": { "$ref": "#/entities/BookingTimelineEvent" },
+      "description": "Immutable booking audit events"
+    },
+    "/bookings/{bookingId}/approvals/{approvalId}": {
+      "schema": { "$ref": "#/entities/WorkApproval" },
+      "description": "In-bay extra repair items requiring customer approval"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "Apni Workshop & Live Bay Tracker",
+  "short_name": "Apni Workshop",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf9f1",
+  "theme_color": "#0d631b",
+  "description": "Indian automotive service booking and live bay tracker with real-time job timeline.",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

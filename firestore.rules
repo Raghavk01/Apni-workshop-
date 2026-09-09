@@ -1,0 +1,83 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCustomer() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "customer";
+    }
+
+    function isWorkshopOwner() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/workshops/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/workshops/$(request.auth.uid)).data.role == "workshop_owner";
+    }
+
+    function bookingBelongsToMe(bookingData) {
+      return bookingData.userId == request.auth.uid || bookingData.workshopId == request.auth.uid;
+    }
+
+    // ---------- TEST CONNECTION ----------
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // ---------- USERS (customers) ----------
+    match /users/{userId} {
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow read, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // ---------- VEHICLES ----------
+    match /vehicles/{vehicleId} {
+      allow create, update, delete: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid ||
+        (isWorkshopOwner() && resource.data.currentWorkshopId == request.auth.uid)
+      );
+    }
+
+    // ---------- WORKSHOPS ----------
+    match /workshops/{workshopId} {
+      allow read: if true; // public discovery info (name, rating, location, isOnline)
+      allow create: if isSignedIn() && request.auth.uid == workshopId;
+      allow update: if isSignedIn() && request.auth.uid == workshopId;
+      allow delete: if false;
+    }
+
+    // ---------- BOOKINGS ----------
+    match /bookings/{bookingId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid;
+
+      allow read: if isSignedIn() && bookingBelongsToMe(resource.data);
+
+      allow update: if isSignedIn() && bookingBelongsToMe(resource.data);
+
+      allow delete: if false;
+
+      match /timeline/{eventId} {
+        allow read: if isSignedIn() &&
+          bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+        allow write: if isSignedIn() &&
+          bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+      }
+
+      match /approvals/{approvalId} {
+        allow read: if isSignedIn() &&
+          bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+        allow create: if isSignedIn() &&
+          bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+        allow update: if isSignedIn() &&
+          bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+      }
+    }
+  }
+}
