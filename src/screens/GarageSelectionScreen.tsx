@@ -17,18 +17,21 @@ export const GarageSelectionScreen: React.FC = () => {
     setCurrentScreen,
     showToast,
     vehicle,
+    nearbyWorkshops,
+    userLocation,
   } = useApp();
 
   const [activeViewMode, setActiveViewMode] = useState<"google_map" | "task_rank">("google_map");
-  const [selectedRadiusKm, setSelectedRadiusKm] = useState<number>(3.0);
+  const [selectedRadiusKm, setSelectedRadiusKm] = useState<number>(8.0);
   const [minRating, setMinRating] = useState<number>(0);
-  const [sortBy, setSortBy] = useState<"task_rating" | "distance">("task_rating");
+  const [sortBy, setSortBy] = useState<"task_rating" | "distance">("distance");
 
   const currentCategoryMeta =
     serviceCategories.find((c) => c.id === selectedCategory) || serviceCategories[0];
 
   const filteredGarages = useMemo(() => {
-    return mockGarages
+    const list = nearbyWorkshops.length > 0 ? nearbyWorkshops : mockGarages;
+    return list
       .filter((g) => {
         const taskRating = getGarageTaskRating(g, selectedCategory);
         const matchesRadius = g.distanceKm <= selectedRadiusKm;
@@ -49,12 +52,18 @@ export const GarageSelectionScreen: React.FC = () => {
           return a.distanceKm - b.distanceKm || bTask.rating - aTask.rating;
         }
       });
-  }, [selectedRadiusKm, minRating, sortBy, selectedCategory]);
+  }, [nearbyWorkshops, selectedRadiusKm, minRating, sortBy, selectedCategory]);
 
-  const handleSelect = (g: WorkshopGarage) => {
+  const handleHighlight = (g: WorkshopGarage) => {
     setSelectedGarage(g);
     const taskRating = getGarageTaskRating(g, selectedCategory);
-    showToast(`${g.name} (${taskRating.rating}★ for ${currentCategoryMeta.title}) selected! Showing service packages & pricing.`);
+    showToast(`📍 Selected ${g.name} (${taskRating.rating}★). Click the button below to confirm.`);
+  };
+
+  const handleConfirmSelection = () => {
+    const g = selectedGarage;
+    const taskRating = getGarageTaskRating(g, selectedCategory);
+    showToast(`✅ Confirmed workshop: ${g.name}! Loading service packages & pricing.`);
     setCurrentScreen("customer_book_package");
   };
 
@@ -114,7 +123,7 @@ export const GarageSelectionScreen: React.FC = () => {
       </div>
 
       {activeViewMode === "google_map" ? (
-        <GoogleMapsWorkshopFinder />
+        <GoogleMapsWorkshopFinder onSelectWorkshop={handleHighlight} />
       ) : (
         <>
           {/* 2. Service Category Switcher Tabs */}
@@ -273,7 +282,7 @@ export const GarageSelectionScreen: React.FC = () => {
             return (
               <div
                 key={garage.id}
-                onClick={() => handleSelect(garage)}
+                onClick={() => handleHighlight(garage)}
                 className={`bg-[#ffffff] rounded-2xl p-4 cursor-pointer transition-all border-2 shadow-xs space-y-3 hover:shadow-md ${
                   isSelected
                     ? "border-[#0d631b] ring-2 ring-[#a3f69c]/50 bg-gradient-to-r from-white to-[#f0f8ef]/40"
@@ -311,9 +320,9 @@ export const GarageSelectionScreen: React.FC = () => {
                   </div>
 
                   <div className="flex-shrink-0">
-                    <span className="px-3 py-1.5 rounded-xl bg-[#0d631b] text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs">
-                      <span>View Services</span>
-                      <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                    <span className={`px-3 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1 shadow-2xs transition-all ${isSelected ? 'bg-[#cbffc2] text-[#005312] border border-[#0d631b]' : 'bg-[#0d631b] text-white'}`}>
+                      <span>{isSelected ? "Selected" : "Select"}</span>
+                      <span className="material-symbols-outlined text-[14px]">{isSelected ? "check_circle" : "arrow_forward"}</span>
                     </span>
                   </div>
                 </div>
@@ -378,8 +387,8 @@ export const GarageSelectionScreen: React.FC = () => {
                     <span className="material-symbols-outlined text-[15px]">local_shipping</span>
                     <span>Free Doorstep Pickup & Live Video Bay</span>
                   </div>
-                  <span className="font-semibold text-[#40493d]">
-                    Tap to see services & pricing →
+                  <span className="font-semibold text-[#0d631b]">
+                    {isSelected ? "Selected! Tap 'Confirm' below" : "Tap to Select"}
                   </span>
                 </div>
               </div>
@@ -404,11 +413,11 @@ export const GarageSelectionScreen: React.FC = () => {
           </div>
 
           <button
-            onClick={() => handleSelect(selectedGarage)}
+            onClick={handleConfirmSelection}
             className="flex-1 max-w-[220px] h-11 rounded-full btn-tactile-green font-bold text-[12px] flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition-all cursor-pointer"
           >
-            <span>Next: Select Services</span>
-            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            <span>Confirm & View Packages</span>
+            <span className="material-symbols-outlined text-[16px]">check_circle</span>
           </button>
         </div>
       </div>

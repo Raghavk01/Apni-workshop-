@@ -10,6 +10,7 @@ export const AuthModal: React.FC = () => {
   const [generatedOtp, setGeneratedOtp] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [deliveryChannel, setDeliveryChannel] = useState<"whatsapp" | "sms">("whatsapp");
+  const [isAutomatedDelivery, setIsAutomatedDelivery] = useState<boolean>(false);
 
   if (!isModalOpen.auth) return null;
 
@@ -57,19 +58,26 @@ export const AuthModal: React.FC = () => {
     setGeneratedOtp(newCode);
     setOtpCode("");
     setDeliveryChannel(channel);
+    setIsAutomatedDelivery(false);
     setOtpSent(true);
     setLoading(true);
 
     try {
-      await fetch("/api/otp/send", {
+      const resp = await fetch("/api/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mobile: cleanPhone, otpCode: newCode }),
       });
+      const data = await resp.json().catch(() => null);
 
       if (channel === "whatsapp") {
-        openWhatsAppDirectly(newCode);
-        showToast(`Opening WhatsApp for +91 ${cleanPhone} with OTP ${newCode}`);
+        if (data?.realWhatsAppSent) {
+          setIsAutomatedDelivery(true);
+          showToast(`⚡ WhatsApp OTP dispatched automatically to +91 ${cleanPhone}!`);
+        } else {
+          openWhatsAppDirectly(newCode);
+          showToast(`Opening WhatsApp for +91 ${cleanPhone} with OTP ${newCode}`);
+        }
       } else {
         showToast(`OTP ${newCode} dispatched for +91 ${cleanPhone}`);
       }
@@ -213,10 +221,19 @@ export const AuthModal: React.FC = () => {
                     <span className="material-symbols-outlined text-[16px]">
                       {deliveryChannel === "whatsapp" ? "chat" : "sms"}
                     </span>
-                    {deliveryChannel === "whatsapp" ? "WhatsApp Code Ready" : "SMS Code Ready"}
+                    {deliveryChannel === "whatsapp"
+                      ? (isAutomatedDelivery ? "Meta WhatsApp Direct Delivery" : "WhatsApp Code Ready")
+                      : "SMS Code Ready"}
                   </span>
                   <span className="text-[10px] text-[#e4e3db] font-mono">+91 {cleanPhone}</span>
                 </div>
+
+                {isAutomatedDelivery && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/15 border border-emerald-400/30 rounded-lg text-[10.5px] text-emerald-300">
+                    <span className="material-symbols-outlined text-[14px]">bolt</span>
+                    <span>Dispatched via official Meta WhatsApp Business Cloud API</span>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between bg-black/50 p-2.5 rounded-xl border border-white/10">
                   <div>

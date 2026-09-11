@@ -42,7 +42,7 @@ export const CartScreen: React.FC = () => {
     }
   };
 
-  const handleProceedToRazorpay = () => {
+  const handleProceedToSchedule = () => {
     if (cart.length === 0) {
       showToast("Your cart is empty. Please add services first.");
       return;
@@ -50,21 +50,8 @@ export const CartScreen: React.FC = () => {
     updateBookingInfo({
       totalAmount: finalPayableTotal,
     });
-    openModal("razorpay");
-  };
-
-  const handlePayAtWorkshop = () => {
-    if (cart.length === 0) {
-      showToast("Your cart is empty. Please add services first.");
-      return;
-    }
-    updateBookingInfo({
-      totalAmount: finalPayableTotal,
-      isPaid: false,
-    });
-    createBookingAndDispatch();
-    showToast("Selected: Pay After Work Completion at Workshop bay.");
-    setCurrentScreen("customer_tracker_journey");
+    setCurrentScreen("customer_book_schedule");
+    showToast("Please choose your preferred slot & schedule to complete checkout.");
   };
 
   const originalTotal = cart.reduce((sum, item) => sum + (item.originalPrice || item.price * 1.25), 0);
@@ -475,44 +462,33 @@ export const CartScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Sticky Bottom Action Bar with Razorpay Checkout */}
+      {/* Sticky Bottom Action Bar with Checkout & Scheduling */}
       <div className="fixed bottom-16 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-[#e4e3db] p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
         <div className="max-w-2xl mx-auto flex flex-col sm:flex-row items-center gap-3">
           <div className="flex items-center justify-between w-full sm:w-auto sm:flex-col sm:items-start">
-            <span className="text-[11px] text-[#707a6c]">Total Payable Amount</span>
+            <span className="text-[11px] text-[#707a6c]">Total Estimate</span>
             <span className="text-[20px] font-black text-[#1b1c17] leading-none">
               ₹{finalPayableTotal.toLocaleString()}
             </span>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:flex-1">
-            {/* Pay via Razorpay Button */}
+            {/* Proceed to Schedule Slot */}
             <button
-              onClick={handleProceedToRazorpay}
-              className="flex-1 py-3 px-4 rounded-xl bg-[#0c2340] hover:bg-[#15345a] text-white font-bold text-[14px] flex items-center justify-center gap-2 shadow-md active:scale-98 transition-all"
+              onClick={handleProceedToSchedule}
+              className="flex-1 py-3 px-4 rounded-xl bg-[#0d631b] hover:bg-[#084212] text-white font-bold text-[14px] flex items-center justify-center gap-2 shadow-md active:scale-98 transition-all"
             >
-              <div className="w-5 h-5 rounded bg-[#3395ff] text-white font-black text-[12px] flex items-center justify-center">
-                ₹
-              </div>
-              <span>Pay via Razorpay</span>
+              <span className="material-symbols-outlined text-[18px]">calendar_today</span>
+              <span>Proceed to Schedule & Slot Selection</span>
               <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-            </button>
-
-            {/* Pay at Workshop Option */}
-            <button
-              onClick={handlePayAtWorkshop}
-              className="py-3 px-3.5 rounded-xl bg-[#f0eee6] hover:bg-[#e4e3db] text-[#1b1c17] font-bold text-[12px] whitespace-nowrap active:scale-98 transition-all border border-[#e4e3db]"
-              title="Pay After Car Delivery at Bay"
-            >
-              Pay at Workshop
             </button>
           </div>
         </div>
 
-        {/* Razorpay Trust Badge */}
+        {/* Guarantee Info */}
         <div className="flex items-center justify-center gap-2 mt-2 text-[10px] text-[#707a6c]">
-          <span className="material-symbols-outlined text-[12px] text-[#0d631b]">lock</span>
-          <span>Secured by Razorpay • UPI (GPay/PhonePe), Credit/Debit Cards, NetBanking</span>
+          <span className="material-symbols-outlined text-[12px] text-[#0d631b]">verified_user</span>
+          <span>Pick date, time slot & handover mode next before securing payment.</span>
         </div>
       </div>
     </div>

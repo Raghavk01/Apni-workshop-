@@ -96,8 +96,8 @@ const GoogleMapSafeMarkers: React.FC<{
   return (
     <>
       <MapCameraSync
-        targetLat={selectedGarage?.lat || userLocation.lat}
-        targetLng={selectedGarage?.lng || userLocation.lng}
+        targetLat={userLocation.lat}
+        targetLng={userLocation.lng}
       />
 
       {/* User Location Beacon */}
@@ -106,11 +106,11 @@ const GoogleMapSafeMarkers: React.FC<{
         title={`Your location (${userLocation.areaName})`}
       >
         <div className="relative flex flex-col items-center">
-          <span className="w-9 h-9 rounded-full bg-blue-500/25 animate-ping absolute -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2 pointer-events-none"></span>
-          <div className="w-7 h-7 rounded-full bg-blue-600 border-2 border-white shadow-xl flex items-center justify-center text-white z-10">
-            <span className="material-symbols-outlined text-[15px]">directions_car</span>
+          <span className="w-9 h-9 rounded-full bg-emerald-500/25 animate-ping absolute -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2 pointer-events-none"></span>
+          <div className="w-7 h-7 rounded-full bg-[#0d631b] border-2 border-white shadow-xl flex items-center justify-center text-white z-10">
+            <span className="material-symbols-outlined text-[15px]">person_pin_circle</span>
           </div>
-          <span className="mt-0.5 px-1.5 py-0.2 bg-black/80 rounded-full border border-white/20 text-[8px] font-bold text-white tracking-wider whitespace-nowrap">
+          <span className="mt-0.5 px-1.5 py-0.2 bg-[#0d631b] rounded-full border border-white/20 text-[8px] font-bold text-white tracking-wider whitespace-nowrap">
             YOU
           </span>
         </div>
@@ -274,19 +274,79 @@ const DirectGoogleMapsViewer: React.FC<{
   onSelectWorkshop: (garage: WorkshopGarage) => void;
   onBookWorkshop?: (garage: WorkshopGarage) => void;
 }> = ({ userLocation, workshops, selectedGarage, onSelectWorkshop, onBookWorkshop }) => {
-  const targetGarage = selectedGarage || workshops[0];
-  const targetQuery = targetGarage
-    ? `${targetGarage.name}, ${targetGarage.address || targetGarage.locationArea}`
-    : `car repair workshop near ${userLocation.areaName}`;
+  const [mapFocus, setMapFocus] = useState<"user" | "workshop" | "route">("user");
 
-  const embedUrl = `https://maps.google.com/maps?q=${encodeURIComponent(
-    targetQuery
-  )}&t=&z=14&ie=UTF8&iwloc=&output=embed`;
+  const targetGarage = selectedGarage || workshops[0];
+  const targetLat = targetGarage?.lat ?? userLocation.lat;
+  const targetLng = targetGarage?.lng ?? userLocation.lng;
+
+  // Compute embed URL based on active focus mode
+  let embedUrl = `https://maps.google.com/maps?q=${userLocation.lat},${userLocation.lng}&ll=${userLocation.lat},${userLocation.lng}&z=14&output=embed`;
+  if (mapFocus === "workshop" && targetGarage) {
+    embedUrl = `https://maps.google.com/maps?q=${targetLat},${targetLng}&ll=${targetLat},${targetLng}&z=15&output=embed`;
+  } else if (mapFocus === "route" && targetGarage) {
+    embedUrl = `https://maps.google.com/maps?saddr=${userLocation.lat},${userLocation.lng}&daddr=${targetLat},${targetLng}&output=embed`;
+  }
 
   return (
     <div className="w-full h-full relative bg-[#f6f4ec] flex flex-col overflow-hidden">
+      {/* Top Focus Mode Switcher on Google Maps */}
+      <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between pointer-events-none">
+        <div className="bg-white/95 backdrop-blur-md p-1 rounded-xl border border-[#e4e3db] shadow-md flex items-center gap-1 pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => setMapFocus("user")}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+              mapFocus === "user"
+                ? "bg-[#0d631b] text-white shadow-2xs"
+                : "text-[#40493d] hover:text-[#111a13]"
+            }`}
+            title="Center on your exact detected location"
+          >
+            <span className="material-symbols-outlined text-[14px]">my_location</span>
+            <span>My Location</span>
+          </button>
+          {targetGarage && (
+            <button
+              type="button"
+              onClick={() => setMapFocus("workshop")}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                mapFocus === "workshop"
+                  ? "bg-[#0d631b] text-white shadow-2xs"
+                  : "text-[#40493d] hover:text-[#111a13]"
+              }`}
+              title="Center on selected workshop"
+            >
+              <span className="material-symbols-outlined text-[14px]">store</span>
+              <span>Workshop</span>
+            </button>
+          )}
+          {targetGarage && (
+            <button
+              type="button"
+              onClick={() => setMapFocus("route")}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                mapFocus === "route"
+                  ? "bg-[#0d631b] text-white shadow-2xs"
+                  : "text-[#40493d] hover:text-[#111a13]"
+              }`}
+              title="Show driving route and turn-by-turn directions"
+            >
+              <span className="material-symbols-outlined text-[14px]">directions</span>
+              <span>Route</span>
+            </button>
+          )}
+        </div>
+
+        <div className="bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg text-white text-[10px] font-bold flex items-center gap-1 pointer-events-auto shadow-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Google Maps</span>
+        </div>
+      </div>
+
       {/* Live Google Maps Iframe */}
       <iframe
+        key={`${mapFocus}-${userLocation.lat}-${userLocation.lng}-${targetLat}-${targetLng}`}
         title="Google Maps Live Workshop View"
         src={embedUrl}
         className="w-full flex-1 border-0"
@@ -323,20 +383,20 @@ const DirectGoogleMapsViewer: React.FC<{
               <a
                 href={
                   targetGarage.googleMapsUri ||
-                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                    targetGarage.name + " " + (targetGarage.address || "")
-                  )}`
+                  `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${targetLat},${targetLng}`
                 }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-2.5 py-1.5 bg-[#f0eee6] hover:bg-[#e4e3db] text-[#1b1c17] rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors"
+                title="Open driving route in Google Maps app"
               >
                 <span className="material-symbols-outlined text-[14px] text-[#4285f4]">open_in_new</span>
-                <span>Open App</span>
+                <span>Open Maps</span>
               </a>
             )}
             {targetGarage && onBookWorkshop && (
               <button
+                type="button"
                 onClick={() => onBookWorkshop(targetGarage)}
                 className="px-3 py-1.5 bg-[#0d631b] hover:bg-[#005312] text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
               >

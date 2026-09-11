@@ -289,6 +289,107 @@ export interface TechnicianPerformance {
   efficiencyScore: number;
 }
 
+export type AmbulanceType = "ALS_ICU" | "BLS" | "TRAUMA_UNIT";
+
+export interface AmbulanceDispatchState {
+  id: string;
+  isDispatched: boolean;
+  type: AmbulanceType;
+  typeName: string;
+  numberPlate: string;
+  driverName: string;
+  paramedicName: string;
+  driverPhone: string;
+  hospitalPartner: string;
+  pickupAddress: string;
+  pickupArea: string;
+  pickupLat: number;
+  pickupLng: number;
+  ambulanceLat: number;
+  ambulanceLng: number;
+  etaMins: number;
+  distanceKm: number;
+  status: "dispatched" | "en_route" | "arrived" | "completed";
+  dispatchedAt: string;
+  equipment: string[];
+}
+
+export interface OBDCodeRecord {
+  code: string;
+  category: "Powertrain (P)" | "Chassis (C)" | "Body (B)" | "Network (U)";
+  description: string;
+  severity: "critical" | "warning" | "advisory";
+  symptoms: string[];
+  suggestedRepair: string;
+  estimatedLaborMins: number;
+  oemPartCost: number;
+  freezeFrame?: {
+    rpm: number;
+    speedKm: number;
+    coolantTempC: number;
+    fuelTrim: string;
+    throttlePos: string;
+  };
+}
+
+export interface TrafficEChallan {
+  challanNo: string;
+  vehiclePlate: string;
+  violationDate: string;
+  violationType: string;
+  mvActSection: string;
+  location: string;
+  fineAmount: number;
+  status: "pending" | "paid" | "disputed";
+  evidenceImageUrl?: string;
+  policeDept: string;
+  paymentUrl?: string;
+}
+
+export interface GeofenceConfig {
+  enabled: boolean;
+  radiusMeters: number;
+  workshopLat: number;
+  workshopLng: number;
+  workshopName: string;
+  workshopAddress: string;
+  notifyOnEntry: boolean;
+  notifyOnExit: boolean;
+  soundAlert: boolean;
+  smsAlert: boolean;
+  whatsappAlert: boolean;
+}
+
+export type GeofenceEventType = "ENTER" | "EXIT";
+
+export interface GeofenceEvent {
+  id: string;
+  vehiclePlate: string;
+  vehicleName: string;
+  eventType: GeofenceEventType;
+  timestamp: string;
+  distanceMeters: number;
+  radiusMeters: number;
+  locationArea: string;
+  lat: number;
+  lng: number;
+  speedKm: number;
+  message: string;
+  actionTriggered?: string;
+  driverName?: string;
+}
+
+export interface TrackedVehicleState {
+  lat: number;
+  lng: number;
+  speedKm: number;
+  heading: number;
+  distanceToWorkshopMeters: number;
+  isInsideGeofence: boolean;
+  lastTransitionTime?: string;
+  status: "at_home" | "en_route_to_workshop" | "inside_workshop" | "out_for_test_drive" | "out_for_delivery" | "delivered";
+}
+
 export interface ModalStates {
   aiDiagnose: boolean;
   addEstimate: boolean;
@@ -306,5 +407,13 @@ export interface ModalStates {
   inventory: boolean;
   analytics: boolean;
   customerApproval: boolean;
+  ambulanceDispatch: boolean;
+  obdScanner: boolean;
+  echallan: boolean;
+  whatsappHub: boolean;
+  smsGateway: boolean;
+  liveBayStream: boolean;
+  geofencing: boolean;
+  locationPicker: boolean;
 }
 

@@ -1,6 +1,14 @@
 import React from "react";
 import { useApp } from "../context/AppContext";
 import { UserRole, ScreenView } from "../types";
+import {
+  User,
+  Store,
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  ArrowRight,
+} from "lucide-react";
 
 export const RoleSwitcherBar: React.FC = () => {
   const { userRole, setUserRole, currentScreen, setCurrentScreen, openModal } = useApp();
@@ -12,8 +20,6 @@ export const RoleSwitcherBar: React.FC = () => {
     "customer_cart",
     "customer_book_schedule",
     "customer_tracker_journey",
-    "customer_tracker_inspection",
-    "customer_tracker_ready",
   ];
 
   const workshopScreens: ScreenView[] = [
@@ -54,27 +60,27 @@ export const RoleSwitcherBar: React.FC = () => {
   const getScreenDisplayName = (screen: ScreenView) => {
     switch (screen) {
       case "welcome":
-        return "Welcome / OTP";
+        return "Login / OTP";
       case "customer_home":
-        return "1. Home";
+        return "Home Garage";
       case "customer_book_garages":
-        return "2. Workshop";
+        return "Garages";
       case "customer_book_package":
-        return "3. Services";
+        return "Services";
       case "customer_cart":
-        return "4. Cart";
+        return "Cart";
       case "customer_book_schedule":
-        return "5. Schedule";
+        return "Schedule";
       case "customer_tracker_journey":
-        return "6. Pickup";
+        return "Live Bay";
       case "customer_tracker_inspection":
-        return "7. Inspection";
+        return "Live Bay";
       case "customer_tracker_ready":
-        return "8. Ready & Bill";
+        return "Tax Invoice";
       case "workshop_dashboard":
-        return "1. Dashboard";
+        return "Dashboard";
       case "workshop_bay_log":
-        return "2. Bay Log";
+        return "Bay Logger";
       default:
         return "Screen";
     }
@@ -86,32 +92,34 @@ export const RoleSwitcherBar: React.FC = () => {
   }
 
   return (
-    <div className="bg-[#f0eee6] border-b border-[#e4e3db] px-2.5 sm:px-4 py-1.5 flex items-center justify-between gap-2 text-[11px] select-none sticky top-16 z-30 shadow-2xs">
+    <div className="bg-[#f2efe6] border-b border-[#e4e3db] px-3 sm:px-4 py-1.5 flex items-center justify-between gap-2 text-[11px] select-none sticky top-16 z-30 shadow-2xs">
       {/* Role Switcher Pill */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         <span className="text-[10px] text-[#707a6c] uppercase font-bold tracking-wider hidden sm:inline mr-0.5">
           Role:
         </span>
-        <div className="inline-flex rounded-full bg-[#e4e3db] p-0.5">
+        <div className="inline-flex rounded-full bg-[#e3e0d5] p-0.5 border border-[#d8d5cb]">
           <button
             onClick={() => handleRoleChange("customer")}
-            className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] transition-all whitespace-nowrap cursor-pointer ${
+            className={`px-2.5 py-1 rounded-full font-bold text-[11px] transition-all flex items-center gap-1 cursor-pointer ${
               userRole === "customer"
                 ? "bg-[#0d631b] text-white shadow-xs"
-                : "text-[#40493d] hover:text-[#1b1c17]"
+                : "text-[#556052] hover:text-[#1b1c17]"
             }`}
           >
-            Customer
+            <User size={12} />
+            <span>Customer</span>
           </button>
           <button
             onClick={() => handleRoleChange("workshop")}
-            className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] transition-all whitespace-nowrap cursor-pointer ${
+            className={`px-2.5 py-1 rounded-full font-bold text-[11px] transition-all flex items-center gap-1 cursor-pointer ${
               userRole === "workshop"
                 ? "bg-[#0d631b] text-white shadow-xs"
-                : "text-[#40493d] hover:text-[#1b1c17]"
+                : "text-[#556052] hover:text-[#1b1c17]"
             }`}
           >
-            Workshop
+            <Store size={12} />
+            <span>Workshop</span>
           </button>
         </div>
       </div>
@@ -122,34 +130,37 @@ export const RoleSwitcherBar: React.FC = () => {
         <button
           onClick={handlePrevPage}
           title="Previous Screen"
-          className="h-7 px-2 rounded-lg bg-white hover:bg-[#e4e3db] text-[#40493d] hover:text-[#1b1c17] border border-[#e4e3db] flex items-center gap-0.5 text-[10px] font-bold shadow-2xs cursor-pointer transition-colors"
+          className="h-7 px-2 rounded-lg bg-white hover:bg-[#e4e3db] text-[#40493d] hover:text-[#1b1c17] border border-[#e4e3db] flex items-center gap-1 text-[11px] font-bold shadow-2xs cursor-pointer transition-colors"
         >
-          <span className="material-symbols-outlined text-[14px]">arrow_back</span>
+          <ChevronLeft size={14} />
           <span className="hidden xs:inline">Prev</span>
         </button>
 
         {/* Screen Drawer Picker */}
         <button
           onClick={() => openModal("screenDrawer")}
-          className="h-7 flex items-center gap-1 text-[#40493d] font-bold hover:text-[#0d631b] bg-white px-2.5 rounded-lg border border-[#e4e3db] shadow-2xs transition-colors whitespace-nowrap cursor-pointer"
+          className="h-7 flex items-center gap-1.5 text-[#40493d] font-bold hover:text-[#0d631b] bg-white px-2.5 rounded-lg border border-[#e4e3db] shadow-2xs transition-colors whitespace-nowrap cursor-pointer hover:border-[#0d631b]/40"
         >
-          <span className="text-[10px] text-[#707a6c] hidden sm:inline">View:</span>
+          <Layers size={13} className="text-[#0d631b]" />
           <span className="text-[11px] font-bold text-[#1b1c17] truncate max-w-[90px] sm:max-w-[120px]">
             {getScreenDisplayName(currentScreen)}
           </span>
-          <span className="material-symbols-outlined text-[13px] text-[#707a6c]">expand_more</span>
+          <span className="text-[9px] bg-[#f0eee6] text-[#707a6c] px-1 py-0.2 rounded font-medium">
+            {currentIndex + 1}/{activeFlow.length}
+          </span>
         </button>
 
         {/* Dedicated Next Page Button */}
         <button
           onClick={handleNextPage}
           title="Next Screen"
-          className="h-7 px-2.5 rounded-lg bg-[#0d631b] hover:bg-[#005312] text-white flex items-center gap-1 text-[11px] font-bold shadow-2xs cursor-pointer transition-all active:scale-95"
+          className="h-7 px-2.5 rounded-lg bg-[#0d631b] hover:bg-[#094813] text-white flex items-center gap-1 text-[11px] font-bold shadow-2xs cursor-pointer transition-all active:scale-95"
         >
-          <span>Next Page</span>
-          <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+          <span>Next</span>
+          <ChevronRight size={14} />
         </button>
       </div>
     </div>
   );
 };
+

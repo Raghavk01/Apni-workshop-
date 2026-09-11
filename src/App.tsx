@@ -7,8 +7,13 @@ import React from "react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Header } from "./components/Header";
 import { BottomNav } from "./components/BottomNav";
-import { RoleSwitcherBar } from "./components/RoleSwitcherBar";
 import { ScreenQuickDrawer } from "./components/ScreenQuickDrawer";
+import { AmbulanceDispatchModal } from "./components/AmbulanceDispatchModal";
+import { OBDDiagnosticModal } from "./components/OBDDiagnosticModal";
+import { EChallanVerificationModal } from "./components/EChallanVerificationModal";
+import { WhatsAppBusinessHubModal } from "./components/WhatsAppBusinessHubModal";
+import { SMSGatewayModal } from "./components/SMSGatewayModal";
+import { LiveBayStreamModal } from "./components/LiveBayStreamModal";
 import { AIDiagnosticModal } from "./components/AIDiagnosticModal";
 import { InspectionChecklistModal } from "./components/InspectionChecklistModal";
 import { AddEstimateModal } from "./components/AddEstimateModal";
@@ -24,6 +29,9 @@ import { CustomerApprovalModal } from "./components/CustomerApprovalModal";
 import { ServiceRemindersModal } from "./components/ServiceRemindersModal";
 import { InventoryManagerModal } from "./components/InventoryManagerModal";
 import { WorkshopAnalyticsModal } from "./components/WorkshopAnalyticsModal";
+import { GeofenceNotificationModal } from "./components/GeofenceNotificationModal";
+import { GeofenceFloatingAlertBanner } from "./components/GeofenceFloatingAlertBanner";
+import { LocationPickerModal } from "./components/LocationPickerModal";
 
 // Screens
 import { WelcomeScreen } from "./screens/WelcomeScreen";
@@ -32,8 +40,6 @@ import { BookServicePackageScreen } from "./screens/BookServicePackageScreen";
 import { GarageSelectionScreen } from "./screens/GarageSelectionScreen";
 import { CartScreen } from "./screens/CartScreen";
 import { ScheduleCheckoutScreen } from "./screens/ScheduleCheckoutScreen";
-import { CustomerLiveTrackerInspectionScreen } from "./screens/CustomerLiveTrackerInspectionScreen";
-import { CustomerLiveTrackerReadyScreen } from "./screens/CustomerLiveTrackerReadyScreen";
 import { CustomerLiveTrackerJourneyScreen } from "./screens/CustomerLiveTrackerJourneyScreen";
 import { WorkshopDashboardScreen } from "./screens/WorkshopDashboardScreen";
 import { MechanicLiveBayLogScreen } from "./screens/MechanicLiveBayLogScreen";
@@ -64,11 +70,11 @@ const MainAppContent: React.FC = () => {
       case "customer_book_schedule":
         return <ScheduleCheckoutScreen />;
       case "customer_tracker_journey":
-        return <CustomerLiveTrackerJourneyScreen />;
+        return <CustomerLiveTrackerJourneyScreen defaultTab="journey" />;
       case "customer_tracker_inspection":
-        return <CustomerLiveTrackerInspectionScreen />;
+        return <CustomerLiveTrackerJourneyScreen defaultTab="inspection" />;
       case "customer_tracker_ready":
-        return <CustomerLiveTrackerReadyScreen />;
+        return <CustomerLiveTrackerJourneyScreen defaultTab="ready" />;
       case "workshop_dashboard":
         return <WorkshopDashboardScreen />;
       case "workshop_bay_log":
@@ -88,9 +94,6 @@ const MainAppContent: React.FC = () => {
       {/* Spacer for fixed header */}
       {!isWelcome && <div className="h-16 pt-safe"></div>}
 
-      {/* Role & Screen quick switcher banner */}
-      <RoleSwitcherBar />
-
       {/* Active screen content */}
       <main className="flex-1 flex flex-col w-full">
         {renderActiveScreen()}
@@ -109,7 +112,18 @@ const MainAppContent: React.FC = () => {
         </div>
       )}
 
+      {/* Floating Geofence Trigger Alert Banner */}
+      <GeofenceFloatingAlertBanner />
+
       {/* Interactive Modals */}
+      <LocationPickerModal />
+      <GeofenceNotificationModal />
+      <AmbulanceDispatchModal />
+      <OBDDiagnosticModal />
+      <EChallanVerificationModal />
+      <WhatsAppBusinessHubModal />
+      <SMSGatewayModal />
+      <LiveBayStreamModal />
       <ScreenQuickDrawer />
       <CustomerSupportModal />
       <AIDiagnosticModal />

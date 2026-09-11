@@ -102,26 +102,31 @@ export const WelcomeScreen: React.FC = () => {
     setIsSendingOtp(true);
 
     try {
-      await fetch("/api/otp/send", {
+      const resp = await fetch("/api/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mobile: cleanMobile, name, plate, otpCode: randomOtp }),
       });
+      const data = await resp.json().catch(() => null);
       setSmsSimulated(true);
 
       if (channel === "whatsapp") {
-        const msg = encodeURIComponent(
-          `🚗 *Apni Workshop Security Verification*\n\nNamaste ${name},\nYour Live Security Verification OTP is: *${randomOtp}*\n\nVehicle: ${plate}\nValid for 10 minutes.`
-        );
-        const waUrl = `https://api.whatsapp.com/send?phone=91${cleanMobile}&text=${msg}`;
-        const link = document.createElement("a");
-        link.href = waUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showToast(`Opening WhatsApp for +91 ${cleanMobile} with OTP`);
+        if (data?.realWhatsAppSent) {
+          showToast(`⚡ WhatsApp OTP delivered automatically via Meta Cloud API!`);
+        } else {
+          const msg = encodeURIComponent(
+            `🚗 *Apni Workshop Security Verification*\n\nNamaste ${name},\nYour Live Security Verification OTP is: *${randomOtp}*\n\nVehicle: ${plate}\nValid for 10 minutes.`
+          );
+          const waUrl = `https://api.whatsapp.com/send?phone=91${cleanMobile}&text=${msg}`;
+          const link = document.createElement("a");
+          link.href = waUrl;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          showToast(`Opening WhatsApp for +91 ${cleanMobile} with OTP`);
+        }
       } else {
         showToast(`Live OTP dispatched for +91 ${cleanMobile}`);
       }
@@ -138,23 +143,28 @@ export const WelcomeScreen: React.FC = () => {
     if (!generatedOtp) return;
     setIsSendingOtp(true);
     try {
-      await fetch("/api/otp/send", {
+      const resp = await fetch("/api/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mobile: cleanMobile, name, plate, otpCode: generatedOtp }),
       });
-      const msg = encodeURIComponent(
-        `🚗 *Apni Workshop Security Verification*\n\nNamaste ${name},\nYour Live Security Verification OTP is: *${generatedOtp}*\n\nVehicle: ${plate}\nValid for 10 minutes.`
-      );
-      const waUrl = `https://api.whatsapp.com/send?phone=91${cleanMobile}&text=${msg}`;
-      const link = document.createElement("a");
-      link.href = waUrl;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast(`Opening WhatsApp for +91 ${cleanMobile}`);
+      const data = await resp.json().catch(() => null);
+      if (data?.realWhatsAppSent) {
+        showToast(`⚡ WhatsApp OTP delivered automatically via Meta Cloud API!`);
+      } else {
+        const msg = encodeURIComponent(
+          `🚗 *Apni Workshop Security Verification*\n\nNamaste ${name},\nYour Live Security Verification OTP is: *${generatedOtp}*\n\nVehicle: ${plate}\nValid for 10 minutes.`
+        );
+        const waUrl = `https://api.whatsapp.com/send?phone=91${cleanMobile}&text=${msg}`;
+        const link = document.createElement("a");
+        link.href = waUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast(`Opening WhatsApp for +91 ${cleanMobile}`);
+      }
     } catch {
       showToast(`OTP ready: ${generatedOtp}`);
     } finally {

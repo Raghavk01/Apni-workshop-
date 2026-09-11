@@ -14,13 +14,41 @@ service cloud.firestore {
     }
 
     function isWorkshopOwner() {
-      return isSignedIn() &&
-        exists(/databases/$(database)/documents/workshops/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/workshops/$(request.auth.uid)).data.role == "workshop_owner";
+      return isSignedIn() && (
+        (exists(/databases/$(database)/documents/workshops/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/workshops/$(request.auth.uid)).data.role == "workshop_owner") ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "workshop_owner")
+      );
     }
 
     function bookingBelongsToMe(bookingData) {
       return bookingData.userId == request.auth.uid || bookingData.workshopId == request.auth.uid;
+    }
+
+    function isWorkshopPartyToBooking(bookingData) {
+      return isSignedIn() && (bookingData.workshopId == request.auth.uid || isWorkshopOwner());
+    }
+
+    function isCustomerPartyToBooking(bookingData) {
+      return isSignedIn() && bookingData.userId == request.auth.uid;
+    }
+
+    // Lock core immutable fields down: parties must never be changed after creation.
+    // Also safely guard optional packagePrice if present.
+    function bookingImmutableFieldsUnchanged() {
+      return request.resource.data.userId == resource.data.userId &&
+        request.resource.data.workshopId == resource.data.workshopId &&
+        (!('packagePrice' in resource.data) || !('packagePrice' in request.resource.data) || request.resource.data.packagePrice == resource.data.packagePrice);
+    }
+
+    // Customers may update non-financial/scheduling fields without altering price or status,
+    // OR advance from AWAITING_CUSTOMER_APPROVAL to REPAIR_IN_PROGRESS when signing off on extra bay work.
+    function isCustomerAllowedUpdate() {
+      return isCustomerPartyToBooking(resource.data) && (
+        (request.resource.data.status == resource.data.status && request.resource.data.totalAmount == resource.data.totalAmount) ||
+        (resource.data.status == "AWAITING_CUSTOMER_APPROVAL" && request.resource.data.status == "REPAIR_IN_PROGRESS")
+      );
     }
 
     // ---------- TEST CONNECTION ----------
@@ -37,10 +65,12 @@ service cloud.firestore {
 
     // ---------- VEHICLES ----------
     match /vehicles/{vehicleId} {
-      allow create, update, delete: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && request.resource.data.ownerId == request.auth.uid && resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow read: if isSignedIn() && (
         resource.data.ownerId == request.auth.uid ||
-        (isWorkshopOwner() && resource.data.currentWorkshopId == request.auth.uid)
+        (resource.data.currentWorkshopId == request.auth.uid || isWorkshopOwner())
       );
     }
 
@@ -48,7 +78,7 @@ service cloud.firestore {
     match /workshops/{workshopId} {
       allow read: if true; // public discovery info (name, rating, location, isOnline)
       allow create: if isSignedIn() && request.auth.uid == workshopId;
-      allow update: if isSignedIn() && request.auth.uid == workshopId;
+      allow update: if isSignedIn() && (request.auth.uid == workshopId || isWorkshopOwner());
       allow delete: if false;
     }
 
@@ -59,7 +89,14 @@ service cloud.firestore {
 
       allow read: if isSignedIn() && bookingBelongsToMe(resource.data);
 
-      allow update: if isSignedIn() && bookingBelongsToMe(resource.data);
+      // Secure update control:
+      // 1. Immutable parties (userId, workshopId) can never be swapped.
+      // 2. Workshops can advance booking lifecycle and manage bay assignments.
+      // 3. Customers can manage scheduling details or approve recommended bay repairs.
+      allow update: if isSignedIn() && bookingImmutableFieldsUnchanged() && (
+        isCustomerAllowedUpdate() ||
+        isWorkshopPartyToBooking(resource.data)
+      );
 
       allow delete: if false;
 
@@ -70,13 +107,20 @@ service cloud.firestore {
           bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
       }
 
+      // WorkApproval subcollection:
+      // Only the assigned workshop can propose extra work items.
+      // Only the customer can approve or reject, preserving componentName & price integrity.
       match /approvals/{approvalId} {
         allow read: if isSignedIn() &&
           bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+
         allow create: if isSignedIn() &&
-          bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+          isWorkshopPartyToBooking(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+
         allow update: if isSignedIn() &&
-          bookingBelongsToMe(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+          isCustomerPartyToBooking(get(/databases/$(database)/documents/bookings/$(bookingId)).data) &&
+          request.resource.data.componentName == resource.data.componentName &&
+          request.resource.data.price == resource.data.price;
       }
     }
   }

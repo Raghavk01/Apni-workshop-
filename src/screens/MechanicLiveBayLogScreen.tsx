@@ -1,5 +1,16 @@
 import React from "react";
 import { useApp } from "../context/AppContext";
+import {
+  Camera,
+  Sparkles,
+  CheckCircle2,
+  Wrench,
+  PlusCircle,
+  Send,
+  Check,
+  CheckCheck,
+  Clock,
+} from "lucide-react";
 
 export const MechanicLiveBayLogScreen: React.FC = () => {
   const {
@@ -33,7 +44,7 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
       <div className="bg-[#ffffff] rounded-2xl p-4 border border-[#e4e3db] shadow-xs space-y-3">
         <div className="flex items-start justify-between">
           <div>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#cbffc2] text-[#005312] text-[10px] font-extrabold uppercase tracking-wide">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#cbffc2] text-[#005312] text-[10px] font-extrabold uppercase tracking-wide">
               <span className="w-1.5 h-1.5 rounded-full bg-[#005312] animate-ping"></span>
               Bay 03 Mechanical
             </span>
@@ -59,18 +70,18 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#f0eee6]">
           <button
             onClick={handleCaptureBayPhoto}
-            className="h-10 rounded-xl bg-[#f0eee6] hover:bg-[#eae8e0] text-[#1b1c17] font-bold text-[12px] flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+            className="h-10 rounded-xl bg-[#f0eee6] hover:bg-[#eae8e0] text-[#1b1c17] font-bold text-[12px] flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[18px] text-[#0d631b]">add_a_photo</span>
+            <Camera size={16} className="text-[#0d631b]" />
             <span>+ Add Bay Photo</span>
           </button>
 
           <button
             onClick={() => openModal("aiDiagnose")}
-            className="h-10 rounded-xl bg-[#a3f69c]/70 hover:bg-[#a3f69c] text-[#005312] font-bold text-[12px] flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs"
+            className="h-10 rounded-xl bg-[#a3f69c]/70 hover:bg-[#a3f69c] text-[#005312] font-bold text-[12px] flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[18px]">smart_toy</span>
-            <span>AI Diagnostic Copilot</span>
+            <Sparkles size={16} />
+            <span>AI Copilot</span>
           </button>
         </div>
       </div>
@@ -94,7 +105,7 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
               )}
 
               <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${
+                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 z-10 ${
                   step.status === "done"
                     ? "bg-[#0d631b] text-white"
                     : step.status === "in_progress"
@@ -103,9 +114,9 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
                 }`}
               >
                 {step.status === "done" ? (
-                  <span className="material-symbols-outlined text-[14px]">check</span>
+                  <Check size={14} />
                 ) : (
-                  <span className="material-symbols-outlined text-[14px]">build</span>
+                  <Wrench size={14} />
                 )}
               </div>
 
@@ -129,7 +140,7 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
                       {step.photos.map((ph, pIdx) => (
                         <div
                           key={pIdx}
-                          className="w-20 h-16 rounded-lg overflow-hidden bg-[#eae8e0] border border-[#e4e3db] flex-shrink-0"
+                          className="w-20 h-16 rounded-lg overflow-hidden bg-[#eae8e0] border border-[#e4e3db] shrink-0"
                         >
                           <img src={ph} alt="Bay step" className="w-full h-full object-cover" />
                         </div>
@@ -137,7 +148,7 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
                     </div>
                     {step.photoBadge && (
                       <span className="text-[10px] font-semibold text-[#0d631b] flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[13px]">send</span>
+                        <Send size={12} />
                         {step.photoBadge}
                       </span>
                     )}
@@ -201,9 +212,9 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
         {/* Found New Issue CTA */}
         <button
           onClick={() => openModal("addEstimate")}
-          className="w-full h-11 rounded-xl bg-[#f0eee6] hover:bg-[#eae8e0] text-[#1b1c17] font-bold text-[12px] flex items-center justify-center gap-1 active:scale-95 transition-all"
+          className="w-full h-11 rounded-xl bg-[#f0eee6] hover:bg-[#eae8e0] text-[#1b1c17] font-bold text-[12px] flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
         >
-          <span className="material-symbols-outlined text-[18px] text-[#e65100]">add_circle</span>
+          <PlusCircle size={16} className="text-[#e65100]" />
           <span>Found New Issue? + Add Estimate</span>
         </button>
       </div>
@@ -216,9 +227,9 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
               showToast("Work completed in Bay 03! Advancing to Final QC certification...");
               setCurrentScreen("customer_tracker_ready");
             }}
-            className="w-full h-12 rounded-full btn-tactile-green font-bold text-[13px] flex items-center justify-center gap-2 shadow-md active:scale-98 transition-all"
+            className="w-full h-12 rounded-full btn-tactile-green font-bold text-[13px] flex items-center justify-center gap-2 shadow-md active:scale-98 transition-all cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[20px]">task_alt</span>
+            <CheckCheck size={18} />
             <span>Complete Work & Move to Final QC</span>
           </button>
         </div>
@@ -226,3 +237,4 @@ export const MechanicLiveBayLogScreen: React.FC = () => {
     </div>
   );
 };
+

@@ -16,6 +16,12 @@ import {
   Coupon,
   AppliedCoupon,
   BookingStatus,
+  AmbulanceType,
+  AmbulanceDispatchState,
+  GeofenceConfig,
+  GeofenceEvent,
+  GeofenceEventType,
+  TrackedVehicleState,
 } from "../types";
 import {
   defaultVehicle,
@@ -29,6 +35,7 @@ import {
   mockCoupons,
 } from "../data/mockData";
 import { resolveVehicleImageUrl } from "../lib/carImageResolver";
+import { geolocationService } from "../services/geolocation";
 import { db, auth, testFirebaseConnection } from "../lib/firebase";
 import { doc, setDoc, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
@@ -71,9 +78,10 @@ interface AppContextType {
   nearbyWorkshops: WorkshopGarage[];
   isSearchingWorkshops: boolean;
   googleMapsApiKey: string;
-  detectUserLocation: () => Promise<void>;
+  detectUserLocation: (opts?: { silent?: boolean; forceFresh?: boolean }) => Promise<void>;
   setUserLocationManual: (lat: number, lng: number, areaName: string, address?: string) => Promise<void>;
-  fetchNearbyWorkshops: (lat: number, lng: number, radiusMeters?: number) => Promise<void>;
+  searchLocationManual: (query: string) => Promise<boolean>;
+  fetchNearbyWorkshops: (lat: number, lng: number, radiusMeters?: number, forceFresh?: boolean) => Promise<void>;
   cart: CartItem[];
   addToCart: (item: CartItem) => void;
   removeFromCart: (itemId: string) => void;
@@ -137,6 +145,26 @@ interface AppContextType {
   setPaymentCompleted: (paid: boolean) => void;
   isModalOpen: ModalStates;
   modals: ModalStates;
+  ambulanceDispatch: boolean;
+  ambulanceState: AmbulanceDispatchState | null;
+  dispatchAmbulance: (type: AmbulanceType, notes?: string) => Promise<AmbulanceDispatchState>;
+  cancelAmbulance: () => void;
+  geofenceConfig: GeofenceConfig;
+  updateGeofenceConfig: (partial: Partial<GeofenceConfig>) => void;
+  geofenceEvents: GeofenceEvent[];
+  trackedVehicle: TrackedVehicleState;
+  latestGeofenceAlert: GeofenceEvent | null;
+  checkGeofenceTransition: (
+    lat: number,
+    lng: number,
+    speedKm?: number,
+    plate?: string,
+    name?: string,
+    areaDesc?: string
+  ) => { isInside: boolean; event: GeofenceEventType | null; distanceMeters: number };
+  triggerGeofenceSimulation: (scenario: "enter_workshop" | "exit_test_drive" | "exit_delivery" | "reset_home") => Promise<void>;
+  dismissGeofenceAlert: () => void;
+  clearGeofenceEvents: () => void;
   openModal: (modal: keyof ModalStates) => void;
   closeModal: (modal: keyof ModalStates) => void;
   toastMessage: string | null;
@@ -161,6 +189,14 @@ const initialModalStates: ModalStates = {
   inventory: false,
   analytics: false,
   customerApproval: false,
+  ambulanceDispatch: false,
+  obdScanner: false,
+  echallan: false,
+  whatsappHub: false,
+  smsGateway: false,
+  liveBayStream: false,
+  geofencing: false,
+  locationPicker: false,
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -225,14 +261,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || ""
   );
 
-  const [userLocation, setUserLocation] = useState<UserLocationState>({
-    lat: 28.5244,
-    lng: 77.1565,
-    areaName: "Vasant Kunj, South Delhi",
-    address: "Sector B, Vasant Kunj, New Delhi, Delhi 110070",
-    isLocating: false,
-    error: null,
-    permissionGranted: false,
+  const [userLocation, setUserLocation] = useState<UserLocationState>(() => {
+    try {
+      const saved = localStorage.getItem("apni_customer_location");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.lat === "number" && typeof parsed.lng === "number") {
+          return {
+            lat: parsed.lat,
+            lng: parsed.lng,
+            areaName: parsed.areaName || "Detected Location",
+            address: parsed.address || `${parsed.areaName || "Detected Location"}, India`,
+            isLocating: false,
+            error: null,
+            permissionGranted: Boolean(parsed.permissionGranted),
+          };
+        }
+      }
+    } catch {}
+    return {
+      lat: 28.5244,
+      lng: 77.1565,
+      areaName: "Vasant Kunj, South Delhi",
+      address: "Sector B, Vasant Kunj, New Delhi, Delhi 110070",
+      isLocating: false,
+      error: null,
+      permissionGranted: false,
+    };
   });
 
   const [nearbyWorkshops, setNearbyWorkshops] = useState<WorkshopGarage[]>(mockGarages);
@@ -248,27 +303,364 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch(() => {});
 
-    // Query live real workshops on initial load
+    // Proactively check if geolocation permission is already granted; if so, detect instantly in background
+    if (typeof navigator !== "undefined" && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: "geolocation" as any })
+        .then((perm) => {
+          if (perm.state === "granted") {
+            detectUserLocation({ silent: true });
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Query live real workshops on initial load for current coordinates
     fetchNearbyWorkshops(userLocation.lat, userLocation.lng, 8000);
   }, []);
 
-  const fetchNearbyWorkshops = async (lat: number, lng: number, radiusMeters = 5000) => {
+  // Geofencing state and engine
+  const [geofenceConfig, setGeofenceConfig] = useState<GeofenceConfig>(() => {
+    try {
+      const saved = localStorage.getItem("apni_geofence_config");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      enabled: true,
+      radiusMeters: 1000, // 1.0 km radius by default
+      workshopLat: 28.5355,
+      workshopLng: 77.2638,
+      workshopName: "Sharma Auto Care",
+      workshopAddress: "Plot 14, Okhla Industrial Area Phase 3, New Delhi 110020",
+      notifyOnEntry: true,
+      notifyOnExit: true,
+      soundAlert: true,
+      smsAlert: true,
+      whatsappAlert: true,
+    };
+  });
+
+  const [geofenceEvents, setGeofenceEvents] = useState<GeofenceEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem("apni_geofence_events");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      {
+        id: "geo-evt-001",
+        vehiclePlate: "DL 01 AB 4092",
+        vehicleName: "Mahindra Thar LX 4x4",
+        eventType: "ENTER",
+        timestamp: "10:18 AM",
+        distanceMeters: 420,
+        radiusMeters: 1000,
+        locationArea: "Okhla Phase 3 Workshop Gate",
+        lat: 28.5372,
+        lng: 77.2619,
+        speedKm: 28,
+        message: "Vehicle ENTERED Sharma Auto Care 1.0 km Geofence perimeter. Driver Rahul Sharma approaching Bay 03.",
+        actionTriggered: "Bay Ingestion Alert Dispatched to Workshop Tech Lead",
+        driverName: "Rahul Sharma (Pickup Partner)",
+      },
+      {
+        id: "geo-evt-002",
+        vehiclePlate: "UP 16 DJ 8008",
+        vehicleName: "Hyundai Creta SX(O)",
+        eventType: "EXIT",
+        timestamp: "09:30 AM",
+        distanceMeters: 1350,
+        radiusMeters: 1000,
+        locationArea: "Ring Road Flyover Exit",
+        lat: 28.5441,
+        lng: 77.2512,
+        speedKm: 42,
+        message: "Vehicle EXITED Sharma Auto Care perimeter. Post-service 5 km Quality Road Test in progress.",
+        actionTriggered: "Dynamic QC Telemetry & OBD Road Scan Enabled",
+        driverName: "Anil Kumar (QC Lead)",
+      },
+    ];
+  });
+
+  const [trackedVehicle, setTrackedVehicle] = useState<TrackedVehicleState>({
+    lat: 28.5480,
+    lng: 77.2400,
+    speedKm: 34,
+    heading: 135,
+    distanceToWorkshopMeters: 1480,
+    isInsideGeofence: false,
+    status: "en_route_to_workshop",
+  });
+
+  const [latestGeofenceAlert, setLatestGeofenceAlert] = useState<GeofenceEvent | null>(null);
+
+  const updateGeofenceConfig = (partial: Partial<GeofenceConfig>) => {
+    setGeofenceConfig((prev) => {
+      const next = { ...prev, ...partial };
+      try {
+        localStorage.setItem("apni_geofence_config", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showToast("Geofence perimeter configuration updated!");
+  };
+
+  const playGeofenceChime = (type: "ENTER" | "EXIT") => {
+    try {
+      if (typeof window === "undefined") return;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      if (type === "ENTER") {
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+        osc.frequency.exponentialRampToValueAtTime(659.25, ctx.currentTime + 0.12); // E5
+        osc.frequency.exponentialRampToValueAtTime(783.99, ctx.currentTime + 0.25); // G5
+        gain.gain.setValueAtTime(0.18, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.45);
+      } else {
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime); // G5
+        osc.frequency.exponentialRampToValueAtTime(587.33, ctx.currentTime + 0.12); // D5
+        osc.frequency.exponentialRampToValueAtTime(440.0, ctx.currentTime + 0.25); // A4
+        gain.gain.setValueAtTime(0.18, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.45);
+      }
+
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate([100, 60, 100]);
+      }
+    } catch (e) {
+      // Audio autoplay policy fallback
+    }
+  };
+
+  const checkGeofenceTransition = (
+    lat: number,
+    lng: number,
+    speedKm: number = 32,
+    plate?: string,
+    name?: string,
+    areaDesc?: string
+  ): { isInside: boolean; event: GeofenceEventType | null; distanceMeters: number } => {
+    const targetPlate = plate || vehicle.plate || "DL 01 AB 4092";
+    const targetName = name || vehicle.name || "Mahindra Thar LX";
+    const distMeters = Math.round(
+      calculateHaversineDistanceKm(lat, lng, geofenceConfig.workshopLat, geofenceConfig.workshopLng) * 1000
+    );
+
+    const isInside = distMeters <= geofenceConfig.radiusMeters;
+    const wasInside = trackedVehicle.isInsideGeofence;
+    let transitionEvent: GeofenceEventType | null = null;
+
+    if (!wasInside && isInside) {
+      transitionEvent = "ENTER";
+    } else if (wasInside && !isInside) {
+      transitionEvent = "EXIT";
+    }
+
+    if (transitionEvent && geofenceConfig.enabled) {
+      const isEntry = transitionEvent === "ENTER";
+      const shouldNotify = isEntry ? geofenceConfig.notifyOnEntry : geofenceConfig.notifyOnExit;
+
+      if (shouldNotify) {
+        const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const newEvent: GeofenceEvent = {
+          id: `geo-evt-${Date.now()}`,
+          vehiclePlate: targetPlate,
+          vehicleName: targetName,
+          eventType: transitionEvent,
+          timestamp,
+          distanceMeters: distMeters,
+          radiusMeters: geofenceConfig.radiusMeters,
+          locationArea: areaDesc || (isEntry ? "Workshop Entry Perimeter" : "Workshop Exit Boundary"),
+          lat,
+          lng,
+          speedKm,
+          message: isEntry
+            ? `Vehicle ${targetPlate} ENTERED ${geofenceConfig.workshopName} (${(distMeters / 1000).toFixed(2)} km away). Bay allocation active.`
+            : `Vehicle ${targetPlate} EXITED ${geofenceConfig.workshopName} perimeter (${(distMeters / 1000).toFixed(2)} km away). Out for test/delivery.`,
+          actionTriggered: isEntry
+            ? "Automated Bay Ingestion & Mechanic Camera Feed Activated"
+            : "Quality Road Test / Delivery Notification Dispatched",
+          driverName: isEntry ? "Rahul Sharma (Pickup Partner)" : "Anil Kumar (Test Technician)",
+        };
+
+        setLatestGeofenceAlert(newEvent);
+        setGeofenceEvents((prev) => {
+          const updated = [newEvent, ...prev.slice(0, 19)];
+          try {
+            localStorage.setItem("apni_geofence_events", JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+
+        if (geofenceConfig.soundAlert) {
+          playGeofenceChime(transitionEvent);
+        }
+
+        const toastMsg = isEntry
+          ? `🟢 GEOFENCE ENTER: ${targetName} (${targetPlate}) entered workshop radius (${distMeters}m)!`
+          : `🚗 GEOFENCE EXIT: ${targetName} (${targetPlate}) exited workshop radius (${distMeters}m)!`;
+        showToast(toastMsg);
+      }
+    }
+
+    setTrackedVehicle({
+      lat,
+      lng,
+      speedKm,
+      heading: isInside ? 0 : 135,
+      distanceToWorkshopMeters: distMeters,
+      isInsideGeofence: isInside,
+      lastTransitionTime: transitionEvent ? new Date().toLocaleTimeString() : trackedVehicle.lastTransitionTime,
+      status: isInside ? "inside_workshop" : distMeters > 3000 ? "at_home" : "en_route_to_workshop",
+    });
+
+    return { isInside, event: transitionEvent, distanceMeters: distMeters };
+  };
+
+  const triggerGeofenceSimulation = async (
+    scenario: "enter_workshop" | "exit_test_drive" | "exit_delivery" | "reset_home"
+  ) => {
+    if (scenario === "enter_workshop") {
+      // Move vehicle from outside (1.6km) to inside workshop (150m)
+      setTrackedVehicle((prev) => ({
+        ...prev,
+        isInsideGeofence: false,
+      }));
+      setTimeout(() => {
+        checkGeofenceTransition(
+          geofenceConfig.workshopLat + 0.0012,
+          geofenceConfig.workshopLng + 0.0009,
+          18,
+          vehicle.plate,
+          vehicle.name,
+          "Bay 03 Entry Gate (Inside 1.0 km Perimeter)"
+        );
+      }, 300);
+    } else if (scenario === "exit_test_drive") {
+      // Move vehicle from inside to outside on test drive
+      setTrackedVehicle((prev) => ({
+        ...prev,
+        isInsideGeofence: true,
+      }));
+      setTimeout(() => {
+        checkGeofenceTransition(
+          geofenceConfig.workshopLat + 0.015,
+          geofenceConfig.workshopLng + 0.018,
+          48,
+          vehicle.plate,
+          vehicle.name,
+          "Outer Ring Road Elevated Corridor (Outside Perimeter)"
+        );
+      }, 300);
+    } else if (scenario === "exit_delivery") {
+      // Move vehicle from inside to outside towards customer doorstep
+      setTrackedVehicle((prev) => ({
+        ...prev,
+        isInsideGeofence: true,
+      }));
+      setTimeout(() => {
+        checkGeofenceTransition(
+          userLocation.lat + 0.005,
+          userLocation.lng + 0.004,
+          36,
+          vehicle.plate,
+          vehicle.name,
+          "Green Park Main Sector Road (Out for Doorstep Return)"
+        );
+      }, 300);
+    } else if (scenario === "reset_home") {
+      setTrackedVehicle({
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        speedKm: 0,
+        heading: 0,
+        distanceToWorkshopMeters: 3800,
+        isInsideGeofence: false,
+        status: "at_home",
+      });
+      showToast("Vehicle GPS reset to Customer Residence (Outside Geofence).");
+    }
+  };
+
+  const dismissGeofenceAlert = () => {
+    setLatestGeofenceAlert(null);
+  };
+
+  const clearGeofenceEvents = () => {
+    setGeofenceEvents([]);
+    try {
+      localStorage.removeItem("apni_geofence_events");
+    } catch {}
+    showToast("Geofence event log cleared.");
+  };
+  const calculateHaversineDistanceKm = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number => {
+    const R = 6371; // Earth radius in km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Number((R * c).toFixed(1));
+  };
+
+  // Helper to re-sort workshops by distance relative to a user coordinate
+  const sortAndSelectWorkshops = (
+    rawWorkshops: WorkshopGarage[],
+    userLat: number,
+    userLng: number
+  ): WorkshopGarage[] => {
+    const updated = rawWorkshops.map((w) => {
+      const gLat = w.lat ?? userLat;
+      const gLng = w.lng ?? userLng;
+      const dist = calculateHaversineDistanceKm(userLat, userLng, gLat, gLng);
+      return {
+        ...w,
+        distanceKm: dist,
+        etaMins: Math.max(8, Math.round(dist * 4.2 + 6)),
+        isClosest: false,
+      };
+    });
+
+    updated.sort((a, b) => a.distanceKm - b.distanceKm);
+    if (updated.length > 0) {
+      updated[0].isClosest = true;
+      setSelectedGarage(updated[0]);
+    }
+    setNearbyWorkshops(updated);
+    return updated;
+  };
+
+  const fetchNearbyWorkshops = async (lat: number, lng: number, radiusMeters = 8000, forceFresh = false) => {
     setIsSearchingWorkshops(true);
     try {
-      const res = await fetch("/api/places/nearby-workshops", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ latitude: lat, longitude: lng, radiusMeters }),
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.workshops) && data.workshops.length > 0) {
-        setNearbyWorkshops(data.workshops);
-        if (data.workshops[0]) {
-          setSelectedGarage(data.workshops[0]);
-        }
+      const result = await geolocationService.getNearbyWorkshops(lat, lng, radiusMeters, forceFresh);
+      if (result.workshops && result.workshops.length > 0) {
+        sortAndSelectWorkshops(result.workshops, lat, lng);
+      } else {
+        sortAndSelectWorkshops(nearbyWorkshops, lat, lng);
       }
     } catch (err) {
       console.error("Failed to fetch nearby workshops:", err);
+      // Recalculate distance for existing workshops
+      sortAndSelectWorkshops(nearbyWorkshops, lat, lng);
     } finally {
       setIsSearchingWorkshops(false);
     }
@@ -280,7 +672,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     areaName: string,
     address?: string
   ) => {
-    setUserLocation({
+    const nextState: UserLocationState = {
       lat,
       lng,
       areaName,
@@ -288,81 +680,155 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isLocating: false,
       error: null,
       permissionGranted: true,
-    });
-    showToast(`📍 Location set to ${areaName}. Searching workshops...`);
-    await fetchNearbyWorkshops(lat, lng, 5000);
+    };
+    setUserLocation(nextState);
+    try {
+      localStorage.setItem("apni_customer_location", JSON.stringify(nextState));
+    } catch {}
+
+    // Instant local resort so distances update in 0ms
+    sortAndSelectWorkshops(nearbyWorkshops, lat, lng);
+    showToast(`📍 Location set to ${areaName}. Nearest workshops updated!`);
+    await fetchNearbyWorkshops(lat, lng, 8000);
   };
 
-  const detectUserLocation = async () => {
-    if (typeof window === "undefined" || !("geolocation" in navigator)) {
+  const searchLocationManual = async (query: string): Promise<boolean> => {
+    if (!query.trim()) return false;
+    setUserLocation((prev) => ({ ...prev, isLocating: true, error: null }));
+    showToast(`🔍 Searching location: "${query}"...`);
+
+    try {
+      const res = await fetch("/api/places/search-address", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      const data = await res.json();
+      if (data.success && typeof data.latitude === "number" && typeof data.longitude === "number") {
+        const nextState: UserLocationState = {
+          lat: data.latitude,
+          lng: data.longitude,
+          areaName: data.areaName,
+          address: data.address,
+          isLocating: false,
+          error: null,
+          permissionGranted: true,
+        };
+        setUserLocation(nextState);
+        try {
+          localStorage.setItem("apni_customer_location", JSON.stringify(nextState));
+        } catch {}
+
+        sortAndSelectWorkshops(nearbyWorkshops, data.latitude, data.longitude);
+        showToast(`📍 Located: ${data.areaName}! Updating nearest workshops...`);
+        await fetchNearbyWorkshops(data.latitude, data.longitude, 8000);
+        return true;
+      }
+    } catch (err) {
+      console.error("Search address error:", err);
+    } finally {
+      setUserLocation((prev) => ({ ...prev, isLocating: false }));
+    }
+
+    showToast(`Could not find "${query}". Please check spelling or select from quick hubs.`);
+    return false;
+  };
+
+  const detectUserLocation = async (opts?: { silent?: boolean; forceFresh?: boolean }) => {
+    const isForceFresh = opts?.forceFresh !== undefined ? opts.forceFresh : true;
+    if (!opts?.silent) {
+      setUserLocation((prev) => ({ ...prev, isLocating: true, error: null }));
+      showToast("📍 Accessing high-accuracy device GPS satellite...");
+    }
+
+    try {
+      if (isForceFresh) {
+        geolocationService.clearCache();
+      }
+
+      // High-Accuracy GPS acquisition with 2-stage progressive fallback
+      const geoResult = await geolocationService.getCurrentPosition({
+        enableHighAccuracy: true, // High-Accuracy satellite & WiFi mode
+        timeout: 9000,
+        maximumAge: isForceFresh ? 0 : 30000,
+        forceFresh: isForceFresh,
+        ttlMs: 60000, // 60s short TTL cache
+      });
+
+      const lat = geoResult.coords.latitude;
+      const lng = geoResult.coords.longitude;
+
+      // 1. Immediately re-sort workshops with 0ms delay so user sees instant results
+      sortAndSelectWorkshops(nearbyWorkshops, lat, lng);
+
+      // 2. Set coordinates immediately in userLocation state so UI updates instantly (<16ms)
+      const initialArea = geoResult.areaName || `GPS (${lat.toFixed(3)}°, ${lng.toFixed(3)}°)`;
+      setUserLocation((prev) => {
+        const next: UserLocationState = {
+          lat,
+          lng,
+          areaName: initialArea,
+          address: geoResult.address || `GPS Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+          isLocating: false,
+          error: null,
+          permissionGranted: true,
+        };
+        try {
+          localStorage.setItem("apni_customer_location", JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+
+      if (!opts?.silent) {
+        showToast(`📍 High-precision GPS acquired! (${lat.toFixed(3)}°, ${lng.toFixed(3)}°) Resolving address...`);
+      }
+
+      // 3. Reverse geocode via cached service (in background)
+      geolocationService
+        .reverseGeocode(lat, lng, isForceFresh)
+        .then((geoData) => {
+          if (geoData && geoData.areaName) {
+            setUserLocation((prev) => {
+              const updated: UserLocationState = {
+                ...prev,
+                areaName: geoData.areaName,
+                address: geoData.address || `${geoData.areaName}, India`,
+                isLocating: false,
+              };
+              try {
+                localStorage.setItem("apni_customer_location", JSON.stringify(updated));
+              } catch {}
+              return updated;
+            });
+            if (!opts?.silent) {
+              showToast(`📍 Located at ${geoData.areaName}! Nearest workshops updated.`);
+            }
+          }
+        })
+        .catch((e) => console.warn("Reverse geocode warning:", e));
+
+      // 4. Fetch live fresh workshops via cached map data layer
+      await fetchNearbyWorkshops(lat, lng, 8000, Boolean(isForceFresh));
+    } catch (err: any) {
+      console.warn("Geolocation detection error:", err);
       setUserLocation((prev) => ({
         ...prev,
         isLocating: false,
-        error: "Geolocation is not supported by this browser.",
+        error: err?.message || "Location error",
       }));
-      showToast("Geolocation is not supported by this device/browser.");
-      return;
+      if (!opts?.silent) {
+        if (err?.code === 1) {
+          showToast("⚠️ Location permission denied. Opening Location Picker to select your area.");
+          openModal("locationPicker");
+        } else if (err?.code === 3) {
+          showToast("⚠️ GPS timed out. Please choose your area from the list or tap the map.");
+          openModal("locationPicker");
+        } else {
+          showToast("⚠️ Could not acquire GPS. Opening Location Picker.");
+          openModal("locationPicker");
+        }
+      }
     }
-
-    setUserLocation((prev) => ({ ...prev, isLocating: true, error: null }));
-    showToast("📍 Requesting GPS Location access...");
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-
-        try {
-          const res = await fetch("/api/places/reverse-geocode", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ latitude: lat, longitude: lng }),
-          });
-          const data = await res.json();
-          const areaName = data.areaName || `GPS (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`;
-          const address = data.address || `${areaName}, India`;
-
-          setUserLocation({
-            lat,
-            lng,
-            areaName,
-            address,
-            isLocating: false,
-            error: null,
-            permissionGranted: true,
-          });
-
-          showToast(`📍 Located at: ${areaName}! Finding nearby workshops...`);
-          await fetchNearbyWorkshops(lat, lng, 5000);
-        } catch (revErr) {
-          setUserLocation({
-            lat,
-            lng,
-            areaName: `Location (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`,
-            address: `Coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-            isLocating: false,
-            error: null,
-            permissionGranted: true,
-          });
-          await fetchNearbyWorkshops(lat, lng, 5000);
-        }
-      },
-      (err) => {
-        let msg = "Could not access location.";
-        if (err.code === err.PERMISSION_DENIED) {
-          msg = "Location permission denied. Please select a city or search above.";
-        } else if (err.code === err.TIMEOUT) {
-          msg = "Location request timed out. Please try again.";
-        }
-        setUserLocation((prev) => ({
-          ...prev,
-          isLocating: false,
-          error: msg,
-        }));
-        showToast(msg);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-    );
   };
 
   const [selectedGarage, setSelectedGarage] = useState<WorkshopGarage>(mockGarages[0]);
@@ -526,6 +992,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     ],
   });
+
+  const [ambulanceState, setAmbulanceState] = useState<AmbulanceDispatchState | null>(() => {
+    try {
+      const saved = localStorage.getItem("apni_ambulance_dispatch");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+
+  const dispatchAmbulance = async (
+    type: AmbulanceType = "ALS_ICU",
+    notes: string = ""
+  ): Promise<AmbulanceDispatchState> => {
+    const typeNames: Record<AmbulanceType, string> = {
+      ALS_ICU: "Advance Life Support (ALS) / ICU on Wheels",
+      BLS: "Basic Life Support (BLS) Trauma Unit",
+      TRAUMA_UNIT: "Rapid Emergency & Spine Trauma Mobile",
+    };
+
+    const typeEquipment: Record<AmbulanceType, string[]> = {
+      ALS_ICU: [
+        "Transport Ventilator & Multi-Para Cardiac Monitor",
+        "Automated External Defibrillator (AED)",
+        "Certified Emergency Paramedic + BLS Doctor on Board",
+        "Emergency Intubation & Suction Unit",
+      ],
+      BLS: [
+        "Dual Oxygen Cylinders with Flowmeters",
+        "Foldable Stretcher & Spine Board",
+        "Emergency First Responder & Vital Check Kit",
+        "IV Fluids & Emergency Dressing Supplies",
+      ],
+      TRAUMA_UNIT: [
+        "Vacuum Splints & Cervical Immobilization Collars",
+        "High-Flow Oxygen Resuscitator",
+        "Paramedic Trauma Specialist",
+        "Direct Trauma Care & Real-Time Hospital Telemetry",
+      ],
+    };
+
+    // Realistic authentic Indian emergency vehicle registration marks
+    const plates = ["DL 1E AM 1080", "DL 01 AB 9911", "HR 26 ER 1084", "UP 16 EM 0108"];
+    const randomPlate = plates[Math.floor(Math.random() * plates.length)];
+
+    const dispatched: AmbulanceDispatchState = {
+      id: `amb-${Date.now()}`,
+      isDispatched: true,
+      type,
+      typeName: typeNames[type],
+      numberPlate: randomPlate,
+      driverName: "Anoop Kumar (Senior Ambulance Pilot)",
+      paramedicName: "Rajesh Sharma (Lead Emergency Paramedic)",
+      driverPhone: "+91 98101 99108",
+      hospitalPartner: "Max / Fortis Emergency Trauma Grid & National 108 Network",
+      pickupAddress: userLocation.address || "Sector B, Vasant Kunj, New Delhi",
+      pickupArea: userLocation.areaName || "South Delhi",
+      pickupLat: userLocation.lat,
+      pickupLng: userLocation.lng,
+      ambulanceLat: userLocation.lat + 0.0062,
+      ambulanceLng: userLocation.lng + 0.0048,
+      etaMins: 3,
+      distanceKm: 1.4,
+      status: "dispatched",
+      dispatchedAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      equipment: typeEquipment[type],
+    };
+
+    setAmbulanceState(dispatched);
+    try {
+      localStorage.setItem("apni_ambulance_dispatch", JSON.stringify(dispatched));
+    } catch {}
+
+    showToast(`🚑 Emergency Ambulance Dispatched! Plate: ${dispatched.numberPlate} (ETA ~3 mins)`);
+    return dispatched;
+  };
+
+  const cancelAmbulance = () => {
+    setAmbulanceState(null);
+    try {
+      localStorage.removeItem("apni_ambulance_dispatch");
+    } catch {}
+    showToast("Ambulance request cancelled.");
+  };
 
   const [isModalOpen, setIsModalOpen] = useState<ModalStates>(initialModalStates);
 
@@ -1049,6 +1598,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         googleMapsApiKey,
         detectUserLocation,
         setUserLocationManual,
+        searchLocationManual,
         fetchNearbyWorkshops,
         cart,
         addToCart,
@@ -1089,6 +1639,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setPaymentCompleted,
         isModalOpen,
         modals: isModalOpen,
+        ambulanceDispatch: isModalOpen.ambulanceDispatch,
+        ambulanceState,
+        dispatchAmbulance,
+        cancelAmbulance,
+        geofenceConfig,
+        updateGeofenceConfig,
+        geofenceEvents,
+        trackedVehicle,
+        latestGeofenceAlert,
+        checkGeofenceTransition,
+        triggerGeofenceSimulation,
+        dismissGeofenceAlert,
+        clearGeofenceEvents,
         openModal,
         closeModal,
         toastMessage,

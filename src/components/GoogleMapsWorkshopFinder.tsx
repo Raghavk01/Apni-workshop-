@@ -4,14 +4,29 @@ import { WorkshopGarage } from "../types";
 import { RealGoogleMap } from "./RealGoogleMap";
 import { InteractiveLeafletMap } from "./InteractiveLeafletMap";
 
-// Indian tech and business hubs for quick 1-tap switching
+// Indian tech, metropolitan and automotive hubs for quick 1-tap switching
 const POPULAR_LOCATIONS = [
+  { name: "Connaught Place, Central Delhi", lat: 28.6315, lng: 77.2167 },
+  { name: "Saket, South Delhi", lat: 28.5245, lng: 77.2066 },
   { name: "Vasant Kunj, Delhi", lat: 28.5244, lng: 77.1565 },
+  { name: "Dwarka, Delhi", lat: 28.5921, lng: 77.0460 },
+  { name: "Rohini, Delhi", lat: 28.7166, lng: 77.1166 },
+  { name: "Karol Bagh, Delhi", lat: 28.6514, lng: 77.1907 },
+  { name: "Mayapuri Auto Hub, Delhi", lat: 28.6304, lng: 77.1177 },
   { name: "Noida Sector 18", lat: 28.5708, lng: 77.3260 },
   { name: "Gurugram Cyber City", lat: 28.4950, lng: 77.0895 },
+  { name: "Faridabad", lat: 28.4089, lng: 77.3178 },
+  { name: "Ghaziabad", lat: 28.6692, lng: 77.4538 },
   { name: "Bandra, Mumbai", lat: 19.0596, lng: 72.8295 },
+  { name: "Andheri West, Mumbai", lat: 19.1363, lng: 72.8277 },
   { name: "Koramangala, Bengaluru", lat: 12.9352, lng: 77.6245 },
+  { name: "Indiranagar, Bengaluru", lat: 12.9784, lng: 77.6408 },
   { name: "Hitec City, Hyderabad", lat: 17.4474, lng: 78.3762 },
+  { name: "Baner, Pune", lat: 18.5590, lng: 73.7868 },
+  { name: "Anna Nagar, Chennai", lat: 13.0850, lng: 80.2101 },
+  { name: "SG Highway, Ahmedabad", lat: 23.0525, lng: 72.5204 },
+  { name: "Malviya Nagar, Jaipur", lat: 26.8530, lng: 75.8050 },
+  { name: "Sector 17, Chandigarh", lat: 30.7398, lng: 76.7827 },
 ];
 
 interface GoogleMapsWorkshopFinderProps {
@@ -27,6 +42,7 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
     userLocation,
     detectUserLocation,
     setUserLocationManual,
+    searchLocationManual,
     nearbyWorkshops,
     isSearchingWorkshops,
     selectedGarage,
@@ -34,14 +50,18 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
     setCurrentScreen,
     showToast,
     googleMapsApiKey,
+    openModal,
   } = useApp();
 
   const [selectedRadiusKm, setSelectedRadiusKm] = useState<number>(5.0);
   const [minRating, setMinRating] = useState<number>(0);
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
-  const [mapType, setMapType] = useState<"google" | "streets" | "radar">("google");
+  const [mapType, setMapType] = useState<"google" | "streets" | "radar">("streets");
   const [activeMarkerGarage, setActiveMarkerGarage] = useState<WorkshopGarage | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [showLocationModal, setShowLocationModal] = useState<boolean>(false);
+  const [locationModalQuery, setLocationModalQuery] = useState<string>("");
+  const [isSearchingLocationModal, setIsSearchingLocationModal] = useState<boolean>(false);
 
   // Intercept Google Maps Auth / Referrer Not Allowed errors safely
   React.useEffect(() => {
@@ -183,21 +203,25 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
     [setSelectedGarage, showToast, onSelectWorkshop, setCurrentScreen]
   );
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    // Check if matching any popular locations
+    // Check if matching any popular locations first
     const matched = POPULAR_LOCATIONS.find((loc) =>
       loc.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
     if (matched) {
-      setUserLocationManual(matched.lat, matched.lng, matched.name);
+      await setUserLocationManual(matched.lat, matched.lng, matched.name);
       setSearchQuery("");
       return;
     }
 
-    showToast(`Searching workshops matching "${searchQuery}"...`);
+    // Call live geocoding search
+    const found = await searchLocationManual(searchQuery.trim());
+    if (found) {
+      setSearchQuery("");
+    }
   };
 
   return (
@@ -217,6 +241,15 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
           <div className="flex items-center gap-1.5 text-[11px] text-[#707a6c] mt-1 flex-wrap">
             <span className="material-symbols-outlined text-[15px] text-[#0d631b]">pin_drop</span>
             <span className="font-semibold text-[#1b1c17]">{userLocation.areaName}</span>
+            <button
+              type="button"
+              onClick={() => openModal("locationPicker")}
+              className="ml-1 px-2.5 py-0.5 rounded-lg bg-[#e8f5e9] hover:bg-[#c8e6c9] text-[#0d631b] font-bold text-[11px] flex items-center gap-1 border border-[#a5d6a7] cursor-pointer transition-colors"
+              title="Change your search location or select a specific area on the map"
+            >
+              <span>Change / Pin Area</span>
+              <span className="material-symbols-outlined text-[13px]">edit_location_alt</span>
+            </button>
             <span>•</span>
             <span className="text-[#0d631b] font-medium">
               {filteredWorkshops.length} verified {filteredWorkshops.length === 1 ? "garage" : "garages"} within {selectedRadiusKm} km
@@ -275,7 +308,7 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
         </div>
 
         <button
-          onClick={detectUserLocation}
+          onClick={() => detectUserLocation({ forceFresh: true })}
           disabled={userLocation.isLocating}
           className="px-4 py-2 rounded-xl bg-[#0d631b] hover:bg-[#005312] text-white text-[12px] font-bold shadow-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 flex-shrink-0 disabled:opacity-60 cursor-pointer"
         >
@@ -444,7 +477,7 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
 
             <div className="flex items-center gap-2">
               <button
-                onClick={detectUserLocation}
+                onClick={() => detectUserLocation({ forceFresh: true })}
                 className="px-2.5 py-1 bg-[#f0eee6] hover:bg-[#e4e3db] text-[#0d631b] rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
                 title="Re-center on my location"
               >
@@ -492,6 +525,14 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
                 onBookWorkshop={(garage) => {
                   handleSelectWorkshop(garage);
                   setCurrentScreen("customer_book_package");
+                }}
+                onSetUserLocation={(lat, lng) => {
+                  setUserLocationManual(
+                    lat,
+                    lng,
+                    "Custom Pinned Location",
+                    `Coordinates: ${lat.toFixed(4)}°, ${lng.toFixed(4)}°`
+                  );
                 }}
               />
             )}
@@ -670,7 +711,7 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
                     −
                   </button>
                   <button
-                    onClick={detectUserLocation}
+                    onClick={() => detectUserLocation({ forceFresh: true })}
                     title="Center on My GPS Location"
                     className="w-7 h-7 rounded-lg bg-white hover:bg-[#f6f4ec] text-[#0d631b] border border-[#e4e3db] flex items-center justify-center shadow-md cursor-pointer transition-colors active:scale-95"
                   >
@@ -820,6 +861,203 @@ export const GoogleMapsWorkshopFinder: React.FC<GoogleMapsWorkshopFinderProps> =
           })
         )}
       </div>
+
+      {/* 5. Location Selection Modal */}
+      {showLocationModal && (
+        <div
+          id="location-picker-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setShowLocationModal(false)}
+        >
+          <div
+            className="bg-white rounded-3xl border border-[#e4e3db] shadow-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-[#f0eee6]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#0d631b] text-white flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[18px]">edit_location</span>
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-[16px] text-[#1b1c17] leading-tight">
+                      Set Your Search Location
+                    </h3>
+                    <p className="text-[11px] text-[#707a6c] mt-0.5">
+                      Ensure workshops and distance estimates are accurate to your location
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLocationModal(false)}
+                className="w-8 h-8 rounded-xl bg-[#f6f4ec] hover:bg-[#e4e3db] text-[#40493d] flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            {/* Current Active Location Display */}
+            <div className="bg-[#f6f4ec] rounded-2xl p-3 border border-[#e4e3db] flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#707a6c]">
+                  Currently Selected Area
+                </span>
+                <div className="font-extrabold text-[13px] text-[#0d631b] truncate mt-0.5">
+                  {userLocation.areaName}
+                </div>
+                <div className="text-[11px] text-[#40493d] truncate">
+                  {userLocation.address || userLocation.areaName}
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-[#cbffc2] text-[#005312] text-[10px] font-extrabold flex-shrink-0">
+                {userLocation.permissionGranted ? "GPS Active" : "Area Selected"}
+              </span>
+            </div>
+
+            {/* GPS Auto-Detect Button */}
+            <button
+              type="button"
+              onClick={async () => {
+                await detectUserLocation();
+                setShowLocationModal(false);
+              }}
+              disabled={userLocation.isLocating}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#0d631b] hover:bg-[#005312] text-white font-bold text-[13px] shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99] disabled:opacity-60"
+            >
+              {userLocation.isLocating ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  <span>Detecting Precise GPS...</span>
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-[18px]">near_me</span>
+                  <span>Use Live Device GPS (High Accuracy)</span>
+                </>
+              )}
+            </button>
+
+            {/* Manual Colony / Area Search */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[11px] font-bold text-[#40493d] uppercase tracking-wider">
+                Or Search Any Colony, Sector, or Landmark
+              </label>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!locationModalQuery.trim()) return;
+                  setIsSearchingLocationModal(true);
+                  const matched = POPULAR_LOCATIONS.find((loc) =>
+                    loc.name.toLowerCase().includes(locationModalQuery.toLowerCase())
+                  );
+                  if (matched) {
+                    await setUserLocationManual(matched.lat, matched.lng, matched.name);
+                    setIsSearchingLocationModal(false);
+                    setShowLocationModal(false);
+                    setLocationModalQuery("");
+                    return;
+                  }
+                  const success = await searchLocationManual(locationModalQuery.trim());
+                  setIsSearchingLocationModal(false);
+                  if (success) {
+                    setShowLocationModal(false);
+                    setLocationModalQuery("");
+                  }
+                }}
+                className="flex items-center gap-2"
+              >
+                <div className="relative flex-1">
+                  <span className="material-symbols-outlined text-[16px] text-[#707a6c] absolute left-3 top-1/2 -translate-y-1/2">
+                    search
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Saket, Rohini Sector 11, DLF Cyber City..."
+                    value={locationModalQuery}
+                    onChange={(e) => setLocationModalQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#f6f4ec] border border-[#e4e3db] text-[12px] text-[#1b1c17] placeholder-[#707a6c] focus:outline-none focus:border-[#0d631b] focus:bg-white transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSearchingLocationModal || !locationModalQuery.trim()}
+                  className="px-4 py-2 rounded-xl bg-[#1b1c17] hover:bg-black text-white text-[12px] font-bold transition-all disabled:opacity-50 cursor-pointer flex-shrink-0"
+                >
+                  {isSearchingLocationModal ? "Finding..." : "Find"}
+                </button>
+              </form>
+            </div>
+
+            {/* Quick 1-Tap Popular Automotive Areas */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-[#40493d] uppercase tracking-wider">
+                  Select Popular Automotive Hubs
+                </span>
+                <span className="text-[10px] text-[#707a6c]">1-Tap Select</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                {POPULAR_LOCATIONS.map((loc) => {
+                  const isSelected =
+                    Math.abs(userLocation.lat - loc.lat) < 0.03 &&
+                    Math.abs(userLocation.lng - loc.lng) < 0.03;
+
+                  return (
+                    <button
+                      key={loc.name}
+                      type="button"
+                      onClick={async () => {
+                        await setUserLocationManual(loc.lat, loc.lng, loc.name);
+                        setShowLocationModal(false);
+                      }}
+                      className={`p-2 rounded-xl text-left text-[11px] font-bold border transition-all cursor-pointer flex items-center justify-between gap-1 ${
+                        isSelected
+                          ? "bg-[#0d631b] text-white border-[#0d631b] shadow-2xs"
+                          : "bg-[#f6f4ec] text-[#1b1c17] border-[#e4e3db] hover:border-[#0d631b] hover:bg-white"
+                      }`}
+                    >
+                      <span className="truncate">{loc.name.split(",")[0]}</span>
+                      {isSelected ? (
+                        <span className="material-symbols-outlined text-[13px] flex-shrink-0">
+                          check_circle
+                        </span>
+                      ) : (
+                        <span className="text-[9.5px] text-[#707a6c] flex-shrink-0">
+                          {loc.name.split(",")[1] || ""}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Interactive Street Map Pin Drop Hint */}
+            <div className="pt-2 border-t border-[#f0eee6] flex items-center justify-between gap-2 text-[11px]">
+              <div className="flex items-center gap-1 text-[#707a6c]">
+                <span className="material-symbols-outlined text-[15px] text-[#0d631b]">
+                  touch_app
+                </span>
+                <span>Want to pinpoint on map?</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("map");
+                  setMapType("streets");
+                  setShowLocationModal(false);
+                }}
+                className="font-bold text-[#0d631b] hover:underline cursor-pointer"
+              >
+                Tap on Street Map →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

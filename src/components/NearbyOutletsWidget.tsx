@@ -67,7 +67,7 @@ export const NearbyOutletsWidget: React.FC = () => {
           </div>
           <div className="flex items-center gap-1 text-[11px] text-[#707a6c] mt-1">
             <span className="material-symbols-outlined text-[14px] text-[#0d631b]">location_on</span>
-            <span className="font-semibold text-[#40493d]">Vasant Kunj / South Delhi</span>
+            <span className="font-semibold text-[#40493d]">{userLocation.areaName}</span>
             <span>•</span>
             <span>Within {selectedRadiusKm} km radius</span>
           </div>
