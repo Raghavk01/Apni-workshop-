@@ -379,7 +379,8 @@ class GeolocationService {
     latitude: number,
     longitude: number,
     radiusMeters: number = 8000,
-    forceFresh: boolean = false
+    forceFresh: boolean = false,
+    areaName?: string
   ): Promise<{ workshops: WorkshopGarage[]; isCached: boolean }> {
     const mapKey = this.getWorkshopMapKey(latitude, longitude, radiusMeters);
 
@@ -402,7 +403,7 @@ class GeolocationService {
         const res = await fetch("/api/places/nearby-workshops", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ latitude, longitude, radiusMeters }),
+          body: JSON.stringify({ latitude, longitude, radiusMeters, areaName }),
         });
 
         if (res.ok) {
